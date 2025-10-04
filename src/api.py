@@ -36,7 +36,14 @@ model_path = "models/baseline.pkl"
 
 # Pydantic models for request/response validation
 class ExoplanetFeatures(BaseModel):
-    """Features for exoplanet classification."""
+    """Features for exoplanet classification - simplified for Exo-Vision Explorer UI."""
+    koi_period: float = Field(..., description="Orbital Period [days]")
+    koi_depth: float = Field(..., description="Transit Depth [ratio]")
+    koi_duration: float = Field(..., description="Transit Duration [hours]")
+    koi_steff: float = Field(..., description="Stellar Effective Temperature [K]")
+
+class ExoplanetFeaturesExtended(BaseModel):
+    """Extended features for exoplanet classification."""
     kepid: Optional[int] = None
     koi_period: Optional[float] = Field(None, description="Orbital Period [days]")
     koi_depth: Optional[float] = Field(None, description="Transit Depth [ppm]")
@@ -83,8 +90,32 @@ def load_model():
         logger.error(f"Error loading model: {str(e)}")
         return False
 
-def preprocess_features(features: ExoplanetFeatures) -> np.ndarray:
-    """Preprocess features for model prediction."""
+def preprocess_features_simple(features: ExoplanetFeatures) -> np.ndarray:
+    """Preprocess simplified features for Exo-Vision Explorer UI."""
+    # Convert depth from ratio to ppm (multiply by 1,000,000)
+    depth_ppm = features.koi_depth * 1_000_000
+    
+    # Create feature array with default values for missing features
+    # The model expects 11 features, but we only have 4 from the UI
+    # We'll use reasonable defaults for the missing features
+    processed_features = [
+        features.koi_period,      # koi_period
+        depth_ppm,               # koi_depth (converted to ppm)
+        features.koi_duration,    # koi_duration
+        0.5,                     # koi_impact (default)
+        20.0,                    # koi_model_snr (default)
+        features.koi_steff,       # koi_steff
+        4.5,                     # koi_slogg (default)
+        1.0,                     # koi_srad (default)
+        15.0,                    # koi_kepmag (default)
+        300.0,                   # ra (default)
+        50.0                     # dec (default)
+    ]
+    
+    return np.array(processed_features).reshape(1, -1)
+
+def preprocess_features_extended(features: ExoplanetFeaturesExtended) -> np.ndarray:
+    """Preprocess extended features for model prediction."""
     # Convert to dictionary and handle None values
     feature_dict = features.dict()
     
@@ -143,14 +174,36 @@ async def get_model_info():
     )
 
 @app.post("/predict", response_model=PredictionResponse)
-async def predict_single(features: ExoplanetFeatures):
-    """Make a single prediction."""
+async def predict_simple(features: ExoplanetFeatures):
+    """Make a prediction using simplified features for Exo-Vision Explorer UI."""
     if model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
     
     try:
         # Preprocess features
-        X = preprocess_features(features)
+        X = preprocess_features_simple(features)
+        
+        # Make prediction
+        prediction = model.predict(X)[0]
+        probability = model.predict_proba(X)[0].max()
+        
+        return PredictionResponse(
+            prediction=int(prediction),
+            probability=float(probability)
+        )
+    except Exception as e:
+        logger.error(f"Prediction error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
+
+@app.post("/predict/extended", response_model=PredictionResponse)
+async def predict_extended(features: ExoplanetFeaturesExtended):
+    """Make a prediction using extended features."""
+    if model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    
+    try:
+        # Preprocess features
+        X = preprocess_features_extended(features)
         
         # Make prediction
         prediction = model.predict(X)[0]
@@ -166,7 +219,7 @@ async def predict_single(features: ExoplanetFeatures):
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
 @app.post("/predict/batch", response_model=BatchPredictionResponse)
-async def predict_batch(features_list: List[ExoplanetFeatures]):
+async def predict_batch(features_list: List[ExoplanetFeaturesExtended]):
     """Make batch predictions."""
     if model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
@@ -178,7 +231,7 @@ async def predict_batch(features_list: List[ExoplanetFeatures]):
         predictions = []
         
         for features in features_list:
-            X = preprocess_features(features)
+            X = preprocess_features_extended(features)
             prediction = model.predict(X)[0]
             probability = model.predict_proba(X)[0].max()
             

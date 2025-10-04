@@ -1,6 +1,6 @@
 # Exoplanet Classification FastAPI Server
 
-A FastAPI-based machine learning API for classifying exoplanet candidates using NASA Kepler data.
+A FastAPI-based machine learning API for classifying exoplanet candidates using NASA Kepler data. Compatible with the [Exo-Vision Explorer](https://github.com/Epochdev0/exo-vision-explorer) frontend.
 
 ## Features
 
@@ -60,19 +60,41 @@ The server will start at `http://localhost:8000`
 
 ### Predictions
 
-- `POST /predict` - Single prediction
+- `POST /predict` - Simple prediction (Exo-Vision Explorer compatible)
+- `POST /predict/extended` - Extended prediction with all features
 - `POST /predict/batch` - Batch predictions
 - `POST /predict/file` - Predict from uploaded CSV file
 
 ## Usage Examples
 
-### Single Prediction
+### Simple Prediction (Exo-Vision Explorer Compatible)
 
 ```python
 import requests
 
-# Example exoplanet features
+# Simple features for Exo-Vision Explorer UI
 features = {
+    "koi_period": 15.5,
+    "koi_depth": 0.005,
+    "koi_duration": 3.2,
+    "koi_steff": 5800
+}
+
+response = requests.post("http://localhost:8000/predict", json=features)
+result = response.json()
+
+print(f"Prediction: {result['prediction']}")  # 0 or 1
+print(f"Probability: {result['probability']:.3f}")
+```
+
+### Extended Prediction
+
+```python
+import requests
+
+# Extended features with all available data
+features = {
+    "kepid": 10797460,
     "koi_period": 9.48803557,
     "koi_depth": 615.8,
     "koi_duration": 2.9575,
@@ -86,11 +108,12 @@ features = {
     "dec": 48.141651
 }
 
-response = requests.post("http://localhost:8000/predict", json=features)
+response = requests.post("http://localhost:8000/predict/extended", json=features)
 result = response.json()
 
 print(f"Prediction: {result['prediction']}")  # 0 or 1
 print(f"Probability: {result['probability']:.3f}")
+print(f"Kepler ID: {result.get('kepid', 'N/A')}")
 ```
 
 ### Batch Prediction
@@ -188,6 +211,44 @@ The API expects exoplanet features in the following format:
 - `prediction`: 0 (false positive) or 1 (confirmed planet)
 - `probability`: Confidence score (0.0 to 1.0)
 - `kepid`: Kepler ID if provided
+
+## Exo-Vision Explorer Integration
+
+This API is designed to work with the [Exo-Vision Explorer](https://github.com/Epochdev0/exo-vision-explorer) frontend. To integrate:
+
+### 1. Update Frontend API Calls
+
+Replace the Supabase function calls in the frontend with direct API calls to your FastAPI server:
+
+```typescript
+// In src/pages/Index.tsx, replace the Supabase call:
+const response = await fetch('http://localhost:8000/predict', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    koi_period: koiPeriod,
+    koi_depth: koiDepth,
+    koi_duration: koiDuration,
+    koi_steff: koiSteff,
+  }),
+});
+
+const data = await response.json();
+```
+
+### 2. CORS Configuration
+
+The API already includes CORS middleware to allow cross-origin requests from the frontend.
+
+### 3. Testing Integration
+
+Use the provided test script to verify compatibility:
+
+```bash
+python test_exo_vision_api.py
+```
 
 ## Production Deployment
 
