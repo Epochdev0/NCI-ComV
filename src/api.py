@@ -270,18 +270,34 @@ async def predict_from_file(file: UploadFile = File(...)):
         # Make predictions
         predictions = []
         for _, row in df.iterrows():
-            # Convert row to ExoplanetFeatures
-            features_dict = row.to_dict()
-            features = ExoplanetFeatures(**features_dict)
+            # Extract the 4 main features for simple prediction
+            koi_period = row.get('koi_period', 0)
+            koi_depth = row.get('koi_depth', 0)
+            koi_duration = row.get('koi_duration', 0)
+            koi_steff = row.get('koi_steff', 0)
+            kepid = row.get('kepid', None)
             
-            X = preprocess_features(features)
+            # Create ExoplanetFeatures for simple prediction
+            features = ExoplanetFeatures(
+                koi_period=float(koi_period),
+                koi_depth=float(koi_depth),
+                koi_duration=float(koi_duration),
+                koi_steff=float(koi_steff)
+            )
+            
+            # Use the correct preprocessing function
+            X = preprocess_features_simple(features)
             prediction = model.predict(X)[0]
             probability = model.predict_proba(X)[0].max()
             
             predictions.append({
                 "prediction": int(prediction),
                 "probability": float(probability),
-                "kepid": features.kepid
+                "kepid": kepid,
+                "koi_period": koi_period,
+                "koi_depth": koi_depth,
+                "koi_duration": koi_duration,
+                "koi_steff": koi_steff
             })
         
         return {
